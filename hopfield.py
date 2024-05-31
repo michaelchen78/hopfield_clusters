@@ -8,11 +8,14 @@ from bisect import bisect_left
 import torch.nn.functional as F
 import torch
 
+
 BETA = 0.00002
 DELTA = 5  # resolution constant for counting two colors as the same
 NU = 8  # when querying, fraction of pattern vector that is not hidden
 ZETA = 10  # Number of randomly generated vectors per n
-ETA = 1 # number of vectors per cluster
+ETA = 20  # number of vectors per cluster
+PHI = 10  # number of queries 
+
 
 # returns a float between 0 and 1 denoting the closeness of two vectors
 def normalize_dot(x, y):
@@ -72,9 +75,7 @@ def generate_clusters(n, c, center_threshold, cluster_threshold, dim):
                 break
         if far: center_vs.append(v)
         if len(center_vs) == c: break
-    # if len(center_vs) != c:
-    #     print(len(center_vs))
-    #     raise Exception # check that there are c center vectors
+    if len(center_vs) != c: raise Exception # check that there are c center vectors
 
     # group random vectors into clusters around centers
     # with this routine, the center vector itself may or may not be added to the cluster, and you're not guaranteed 20
@@ -99,21 +100,20 @@ def generate_clusters(n, c, center_threshold, cluster_threshold, dim):
     if num_gen != (ZETA * n):
         print(num_gen)
         raise Exception  # check that m vectors have been generated
-    # for arr in clustered_vs:
-    #     if not arr:
-    #         print(arr)
-    #         print(clustered_vs)
-    #         raise Exception  # check that each cluster has at least 1 vector
+    for arr in clustered_vs:
+        if not arr:
+            print(arr)
+            print(clustered_vs)
+            raise Exception  # check that each cluster has at least 1 vector
 
-    # print("cluster distribution:")
-    # cluster_distr = []
-    # for a in clustered_vs: cluster_distr.append(len(a))
-    # print(cluster_distr)
+    print("cluster distribution:")
+    cluster_distr = []
+    for a in clustered_vs: cluster_distr.append(len(a))
+    print(cluster_distr)
 
     return raw_vs, clustered_vs
 
 
-NUM_GENERATED_FRAC = 10
 # given n stored vectors of size dim^2, returns an n-length array of floats, each float is the fraction of pixels that
 # are 'correct' in the retrieval of the corresponding stored vector (see comp_images(...) for explanation of 'correct')
 def test_storage(n, dim):
@@ -121,11 +121,7 @@ def test_storage(n, dim):
     center_threshold = 0.74
     cluster_threshold = 0.75
 
-    # generates NUM_GENERATED vectors of size dim^2 clustered around NUM_CENTERS center vectors
-    # raw_vs, clustered_vs = generate_clusters(n // ETA, center_threshold, cluster_threshold, dim)
-
-
-    raw_vs, clustered_vs = generate_clusters(n, 20, center_threshold, cluster_threshold, dim)
+    raw_vs, clustered_vs = generate_clusters(n, max(1, n//ETA), center_threshold, cluster_threshold, dim)
 
     # convert to tensor of n vectors, these will be stored; drawn from raw_vs, so in random clusters
     # print("len raw_vs " + str(len(raw_vs)))
@@ -149,11 +145,13 @@ def test_storage(n, dim):
     return comp_images(retrieved_arr, truth_arr, num_queries, dim)
 
 
+VALID_BIAS = 0
+NUM_TESTS = 10
+VALID_CLOSE = 0.9
+FRAC_CLOSE = 0.95
+
 # given a min_n and max_n, computes a binary search for the maximum n that passes valid_storage on dim dimension
 # returns the maximum valid n
-
-VALID_BIAS = 0
-
 def find_n(min_n, max_n, dim):
 
     # print("Finding maximum n....")
@@ -173,9 +171,6 @@ def find_n(min_n, max_n, dim):
             # print("didnt work")
     return (first+ last) // 2
 
-NUM_TESTS = 10
-VALID_CLOSE = 0.9
-FRAC_CLOSE = 0.95
 
 # given a dimension and n vectors stored, returns a boolean of whether the queried vector returns correctly
 # ^ it does so by generating NUM_TESTS floats from test_storage, and requires all of the NUM_TESTS entries at maximum
@@ -192,7 +187,6 @@ def valid_storage(n, dim):
     count_m = 0
     count = 0
 
-    #
     while count < NUM_TESTS:
         # if len(res) % 250 ==0: print(len(res))
         x = test_storage(n, dim)
@@ -210,30 +204,19 @@ def valid_storage(n, dim):
             if count_m > (1-FRAC_CLOSE) * NUM_TESTS:
                 return False
             # res.append(i)
-
-    # print(res)
-    # print(count_s, count_m)
-    # if count_s < NUM_TESTS * FRAC_CLOSE or count_s + count_m != NUM_TESTS:
-    #     return False
-    #if count_s
     return True
+
 
 def main():
     # print(test_storage(1, 20))
     print(find_n(1, 2500, 30))
     res = {}
-    # for i in range(32, 45):
     super_res = []
-    # for i in range(5):
-    #     test.append(find_n(10, 2000, 34))
-    #     print(test)
-    #
-    # print(np.mean(test))
     curr_min = 1
     nmax = 2500
 
     for i in range(0, 5):
-        for i in range(25, 38):
+        for i in range(25, 40):
             # x = find_n(curr_min,10000000,i)
             x = find_n(curr_min, nmax, i)
             res[i] = x
